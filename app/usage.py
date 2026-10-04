@@ -1,0 +1,16 @@
+from datetime import datetime, timezone
+
+from sqlalchemy.orm import Session
+
+from app.ids import gen_id
+from app.models import Usage
+
+
+def bump_usage(db: Session, tenant_id: str, field: str, amount: int) -> None:
+    day = datetime.now(timezone.utc).date().isoformat()
+    row = db.query(Usage).filter_by(tenant_id=tenant_id, day=day).one_or_none()
+    if row is None:
+        row = Usage(id=gen_id("use_"), tenant_id=tenant_id, day=day, chars=0, calls=0, llm_tokens=0)
+        db.add(row)
+    current = getattr(row, field)
+    setattr(row, field, int(current or 0) + amount)

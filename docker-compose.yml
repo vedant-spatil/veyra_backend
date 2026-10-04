@@ -1,0 +1,18 @@
+services:
+  veyra-postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: veyra
+      POSTGRES_PASSWORD: veyra
+      POSTGRES_DB: veyra
+    ports:
+      - "5432:5432"
+    volumes:
+      - veyra-pg:/var/lib/postgresql/data
+  veyra-redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+volumes:
+  veyra-pg:
