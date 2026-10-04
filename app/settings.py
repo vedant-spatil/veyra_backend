@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     dograh_base_url: str = "http://127.0.0.1:8000"
     dograh_api_key: str = ""
+    vobiz_auth_id: str = ""
+    vobiz_auth_token: str = ""
     payu_env: str = "test"
     payu_key: str = ""
     payu_salt: str = ""

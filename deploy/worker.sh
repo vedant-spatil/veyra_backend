@@ -22,4 +22,4 @@ if [ "${VIRTUAL_ENV:-}" != "$ROOT/.venv" ]; then
     source .venv/bin/activate
   fi
 fi
-exec celery -A worker.celery_app:celery_app worker --loglevel=INFO
+exec celery -A worker.celery_app:celery_app worker --beat --loglevel=INFO

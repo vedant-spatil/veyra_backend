@@ -1,6 +1,7 @@
-from app.auth import create_session, provision_user, sign_state
+from app.auth import create_session, provision_user
 from app.db import SessionLocal
 from app.dograh import build_initiate_payload, dograh
+from app.seed import seed
 
 
 def _login(client, email: str, name: str = "Asha"):
@@ -13,16 +14,32 @@ def _login(client, email: str, name: str = "Asha"):
     client.cookies.set("veyra_sess", token)
 
 
-def test_allowlist_rejects_unknown_email(client, monkeypatch):
-    monkeypatch.setattr("app.routers.auth.exchange_code", lambda code: {
-        "email": "nope@example.com",
-        "email_verified": True,
-        "name": "Nope",
-        "sub": "google-nope",
-    })
-    response = client.get("/api/auth/google/callback", params={"code": "abc", "state": sign_state()})
-    assert response.status_code == 403
-    assert response.json()["code"] == "not_allowlisted"
+def test_login_rejects_unknown_password(client):
+    response = client.post("/api/auth/login", json={"username": "admin@test.com", "password": "nope"})
+    assert response.status_code == 401
+    assert response.json()["code"] == "bad_login"
+
+
+def test_seeded_admin_sees_billing_and_customer_does_not(client):
+    db = SessionLocal()
+    try:
+        seed(db)
+    finally:
+        db.close()
+    denied = client.post("/api/auth/login", json={"username": "customer@test.com", "password": "customer123"})
+    assert denied.status_code == 200
+    blocked = client.get("/api/admin/billing")
+    assert blocked.status_code == 403
+    client.cookies.clear()
+    allowed = client.post("/api/auth/login", json={"username": "admin@test.com", "password": "admin123"})
+    assert allowed.status_code == 200
+    assert allowed.json()["user"]["role"] == "admin"
+    report = client.get("/api/admin/billing")
+    assert report.status_code == 200
+    body = report.json()
+    assert body["chargedInr"] == 0
+    assert any(row["email"] == "customer@test.com" for row in body["customers"])
+    assert any(row["provider"] == "rumik" and row["mode"] == "local" for row in body["providers"])
 
 
 def test_calls_reject_signed_out(client):
@@ -50,7 +67,7 @@ def test_signed_in_call_uses_workflow_1(client, monkeypatch):
     assert seen["path"] == "/api/v1/telephony/initiate-call"
     assert seen["payload"] == build_initiate_payload("+919876543210", {"contact_name": "Asha"})
     assert seen["payload"]["workflow_id"] == 1
-    assert seen["payload"]["telephony_configuration_id"] == 1
+    assert seen["payload"]["telephony_configuration_id"] == 2
     assert seen["payload"]["from_phone_number_id"] == 1
 
 

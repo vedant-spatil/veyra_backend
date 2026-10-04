@@ -206,3 +206,26 @@ class Call(Base):
     extracted: Mapped[dict] = mapped_column(JSON, default=dict)
     error: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ProviderSync(Base):
+    __tablename__ = "provider_sync"
+
+    provider: Mapped[str] = mapped_column(String(20), primary_key=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    mode: Mapped[str] = mapped_column(String(20), default="local")
+
+
+class ProviderCharge(Base):
+    __tablename__ = "provider_charges"
+    __table_args__ = (UniqueConstraint("provider", "external_id", name="uq_provider_charge_external"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    provider: Mapped[str] = mapped_column(String(20), index=True)
+    external_id: Mapped[str] = mapped_column(String(128))
+    tenant_id: Mapped[str | None] = mapped_column(ForeignKey("tenants.id"), nullable=True, index=True)
+    charged_paise: Mapped[int] = mapped_column(Integer, default=0)
+    period_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    raw: Mapped[dict] = mapped_column(JSON, default=dict)

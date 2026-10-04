@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import require_user
-from app.dograh import DograhError, dograh, empty_extracted
+from app.dograh import TELEPHONY_CONFIGURATION_ID, WORKFLOW_ID, DograhError, dograh, empty_extracted
 from app.ids import gen_id
 from app.models import Call
 from app.serialize import public_call
@@ -42,8 +42,8 @@ def place_call(body: dict, principal=Depends(require_user), db: Session = Depend
         user_id=user.id,
         to_number=phone,
         variables=clean,
-        workflow_id=1,
-        telephony_configuration_id=1,
+        workflow_id=WORKFLOW_ID,
+        telephony_configuration_id=TELEPHONY_CONFIGURATION_ID,
         from_phone_number_id=1,
         status="dialing",
         extracted=empty_extracted(),

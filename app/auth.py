@@ -12,7 +12,7 @@ from app.ids import gen_id, sha256_hex
 from app.models import AllowedEmail, Session as SessionRow, Tenant, User, Wallet
 from app.settings import get_settings
 
-ROLE_LEVEL = {"member": 1, "owner": 2, "admin": 3, "super_admin": 4}
+ROLE_LEVEL = {"customer": 1, "member": 1, "owner": 2, "admin": 3, "super_admin": 4}
 SESSION_DAYS = 7
 JWT_MINUTES = 20
 

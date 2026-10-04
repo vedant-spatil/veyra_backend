@@ -27,3 +27,14 @@ def retry_dial(self, call_id: str):
         return {"run_id": result["run_id"]}
     finally:
         db.close()
+
+
+@celery_app.task
+def sync_provider_billing():
+    from app.billing_sync import sync_if_stale
+
+    db = SessionLocal()
+    try:
+        sync_if_stale(db)
+    finally:
+        db.close()

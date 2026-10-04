@@ -3,7 +3,7 @@ import httpx
 from app.settings import get_settings
 
 WORKFLOW_ID = 1
-TELEPHONY_CONFIGURATION_ID = 1
+TELEPHONY_CONFIGURATION_ID = 2
 FROM_PHONE_NUMBER_ID = 1
 
 EXTRACTED_FIELDS = ("caller_name", "requirement", "language", "next_step", "opted_out")
@@ -109,7 +109,7 @@ class DograhClient:
         headers = {"Content-Type": "application/json"}
         key = get_settings().dograh_api_key
         if key:
-            headers["Authorization"] = f"Bearer {key}"
+            headers["X-API-Key"] = key
         return headers
 
     def request(self, method: str, path: str, payload: dict | None = None) -> dict:

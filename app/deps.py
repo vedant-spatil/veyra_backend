@@ -33,3 +33,10 @@ def require_owner(principal: tuple[User, Tenant] = Depends(require_user)) -> tup
     if ROLE_LEVEL.get(user.role, 0) < ROLE_LEVEL["owner"]:
         raise HTTPException(status_code=403, detail={"error": "insufficient role", "code": "forbidden"})
     return user, tenant
+
+
+def require_admin(principal: tuple[User, Tenant] = Depends(require_user)) -> tuple[User, Tenant]:
+    user, tenant = principal
+    if ROLE_LEVEL.get(user.role, 0) < ROLE_LEVEL["admin"]:
+        raise HTTPException(status_code=403, detail={"error": "insufficient role", "code": "forbidden"})
+    return user, tenant

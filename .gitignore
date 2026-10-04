@@ -1,5 +1,6 @@
 .pytest_cache/
 .env
+.dograh.env
 .venv/
 venv/
 env/

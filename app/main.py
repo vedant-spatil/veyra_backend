@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.routers import agents, auth, billing, calls, demo, health, hvac, usage
+from app.routers import admin_billing, agents, auth, billing, calls, demo, health, hvac, usage
 from app.settings import get_settings
 
 app = FastAPI(title="Veyra")
@@ -15,7 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for module in (health, auth, agents, calls, usage, billing, hvac, demo):
+for module in (health, auth, agents, calls, usage, billing, admin_billing, hvac, demo):
     app.include_router(module.router)
 
 

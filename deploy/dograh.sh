@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Start the official prebuilt Dograh stack on this machine.
-# Postgres and Redis stay on the compose network. The API listens on 127.0.0.1:8000.
+# Start Dograh on Veyra's Postgres and Redis.
+# Dograh tables live in schema dograh inside database veyra. Redis uses database 1.
 set -euo pipefail
 
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-STACK="$REPO/local-dograh"
-BACKEND_ENV="$REPO/backend/.env"
-COMPOSE_URL="https://raw.githubusercontent.com/dograh-hq/dograh/main/docker-compose.yaml"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="$(cd "$ROOT/.." && pwd)"
+ENV_FILE="$ROOT/.dograh.env"
+BACKEND_ENV="$ROOT/.env"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is required."
@@ -22,36 +22,13 @@ set -a
 . "$REPO/.env"
 set +a
 
-mkdir -p "$STACK"
-cd "$STACK"
-
-echo "Downloading the official Dograh compose file."
-curl -fsSL -o docker-compose.yaml "$COMPOSE_URL"
-
-cat > docker-compose.override.yaml <<'EOF'
-# Veyra already publishes host ports 5432 and 6379.
-# The official compose file also claims the container name "minio".
-services:
-  postgres:
-    ports: !reset []
-  redis:
-    ports: !reset []
-  minio:
-    container_name: dograh-minio
-  cloudflared:
-    container_name: dograh-cloudflared
-  api:
-    ports: !override
-      - "127.0.0.1:8000:8000"
-EOF
-
 generate_secret() {
   python3 -c 'import secrets; print(secrets.token_hex(32))'
 }
 
 dotenv_value() {
-  local key=$1 line
-  [ -f .env ] || return 1
+  local file=$1 key=$2 line
+  [ -f "$file" ] || return 1
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
       "$key"=*)
@@ -59,14 +36,14 @@ dotenv_value() {
         return 0
         ;;
     esac
-  done < .env
+  done < "$file"
   return 1
 }
 
 set_dotenv_value() {
-  local key=$1 value=$2 tmp line updated=false
-  tmp=".env.tmp.$$"
-  if [ -f .env ]; then
+  local file=$1 key=$2 value=$3 tmp line updated=false
+  tmp="${file}.tmp.$$"
+  if [ -f "$file" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       case "$line" in
         "$key"=*)
@@ -77,84 +54,91 @@ set_dotenv_value() {
           printf '%s\n' "$line"
           ;;
       esac
-    done < .env > "$tmp"
+    done < "$file" > "$tmp"
     if [ "$updated" != "true" ]; then
       printf '%s=%s\n' "$key" "$value" >> "$tmp"
     fi
-    mv "$tmp" .env
+    mv "$tmp" "$file"
   else
-    printf '%s=%s\n' "$key" "$value" > .env
+    printf '%s=%s\n' "$key" "$value" > "$file"
   fi
 }
 
 ensure_secret() {
   local key=$1 current
-  current="$(dotenv_value "$key" || true)"
+  current="$(dotenv_value "$ENV_FILE" "$key" || true)"
   if [ -z "$current" ]; then
-    set_dotenv_value "$key" "$(generate_secret)"
+    set_dotenv_value "$ENV_FILE" "$key" "$(generate_secret)"
   fi
 }
 
-copy_from_root() {
+copy_if_set() {
   local key=$1 value="${2:-}"
   if [ -n "$value" ]; then
-    set_dotenv_value "$key" "$value"
+    set_dotenv_value "$ENV_FILE" "$key" "$value"
   fi
 }
 
+touch "$ENV_FILE"
 ensure_secret OSS_JWT_SECRET
-ensure_secret POSTGRES_PASSWORD
-ensure_secret REDIS_PASSWORD
-ensure_secret MINIO_ROOT_PASSWORD
-if [ -z "$(dotenv_value MINIO_ROOT_USER || true)" ]; then
-  set_dotenv_value MINIO_ROOT_USER "dograh$(generate_secret | cut -c1-12)"
+if [ -z "$(dotenv_value "$ENV_FILE" MINIO_ROOT_USER || true)" ]; then
+  set_dotenv_value "$ENV_FILE" MINIO_ROOT_USER "dograh$(generate_secret | cut -c1-12)"
 fi
+ensure_secret MINIO_ROOT_PASSWORD
+set_dotenv_value "$ENV_FILE" FASTAPI_WORKERS 1
+set_dotenv_value "$ENV_FILE" ENABLE_TELEMETRY false
+set_dotenv_value "$ENV_FILE" REGISTRY "${REGISTRY:-ghcr.io/dograh-hq}"
 
-set_dotenv_value DEPLOY_MODE prebuilt
-set_dotenv_value FASTAPI_WORKERS 1
-set_dotenv_value ENABLE_TELEMETRY "${ENABLE_TELEMETRY:-true}"
-set_dotenv_value REGISTRY "${REGISTRY:-ghcr.io/dograh-hq}"
-
-copy_from_root DOGRAH_EMAIL "${DOGRAH_EMAIL:-}"
-copy_from_root DOGRAH_PASSWORD "${DOGRAH_PASSWORD:-}"
-copy_from_root DOGRAH_API_KEY "${DOGRAH_API_KEY:-}"
-copy_from_root DEEPGRAM_API_KEY "${DEEPGRAM_API_KEY:-}"
-copy_from_root GROQ_API_KEY "${GROQ_API_KEY:-}"
-copy_from_root GROQ_MODEL "${GROQ_MODEL:-}"
-copy_from_root VOBIZ_AUTH_ID "${VOBIZ_AUTH_ID:-}"
-copy_from_root VOBIZ_AUTH_TOKEN "${VOBIZ_AUTH_TOKEN:-}"
-copy_from_root VOBIZ_NUMBER "${VOBIZ_NUMBER:-}"
+copy_if_set DOGRAH_EMAIL "${DOGRAH_EMAIL:-}"
+copy_if_set DOGRAH_PASSWORD "${DOGRAH_PASSWORD:-}"
+copy_if_set DOGRAH_API_KEY "${DOGRAH_API_KEY:-}"
+copy_if_set DEEPGRAM_API_KEY "${DEEPGRAM_API_KEY:-}"
+copy_if_set GROQ_API_KEY "${GROQ_API_KEY:-}"
+copy_if_set GROQ_MODEL "${GROQ_MODEL:-}"
+copy_if_set VOBIZ_AUTH_ID "${VOBIZ_AUTH_ID:-}"
+copy_if_set VOBIZ_AUTH_TOKEN "${VOBIZ_AUTH_TOKEN:-}"
+copy_if_set VOBIZ_NUMBER "${VOBIZ_NUMBER:-}"
 
 if [ -f "$BACKEND_ENV" ]; then
-  ENV_FILE="$BACKEND_ENV"
-  set_dotenv_value() {
-    local key=$1 value=$2 tmp line updated=false
-    tmp="${ENV_FILE}.tmp.$$"
-    while IFS= read -r line || [ -n "$line" ]; do
-      case "$line" in
-        "$key"=*)
-          printf '%s=%s\n' "$key" "$value"
-          updated=true
-          ;;
-        *)
-          printf '%s\n' "$line"
-          ;;
-      esac
-    done < "$ENV_FILE" > "$tmp"
-    if [ "$updated" != "true" ]; then
-      printf '%s=%s\n' "$key" "$value" >> "$tmp"
-    fi
-    mv "$tmp" "$ENV_FILE"
-  }
-  set_dotenv_value DOGRAH_BASE_URL "http://127.0.0.1:8000"
-  set_dotenv_value DOGRAH_API_KEY "${DOGRAH_API_KEY:-}"
+  set_dotenv_value "$BACKEND_ENV" DOGRAH_BASE_URL "http://127.0.0.1:8000"
+  set_dotenv_value "$BACKEND_ENV" DOGRAH_API_KEY "${DOGRAH_API_KEY:-}"
+  if [ -n "${VOBIZ_AUTH_ID:-}" ]; then
+    set_dotenv_value "$BACKEND_ENV" VOBIZ_AUTH_ID "${VOBIZ_AUTH_ID}"
+  fi
+  if [ -n "${VOBIZ_AUTH_TOKEN:-}" ]; then
+    set_dotenv_value "$BACKEND_ENV" VOBIZ_AUTH_TOKEN "${VOBIZ_AUTH_TOKEN}"
+  fi
 fi
 
+echo "Stopping the extra local-dograh Postgres and Redis."
+docker rm -f local-dograh-postgres-1 local-dograh-redis-1 local-dograh-api-1 local-dograh-ui-1 dograh-minio dograh-cloudflared >/dev/null 2>&1 || true
+
+cd "$ROOT"
+# shellcheck disable=SC1091
+set -a
+. "$ENV_FILE"
+set +a
+
+echo "Starting the shared Postgres and Redis."
+REGISTRY="${REGISTRY:-ghcr.io/dograh-hq}" docker compose up -d veyra-postgres veyra-redis
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  if docker compose exec -T veyra-postgres pg_isready -U veyra -d veyra >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+docker compose exec -T veyra-postgres psql -U veyra -d veyra -v ON_ERROR_STOP=1 < "$ROOT/deploy/dograh-veyra.sql"
+if [ "$(docker compose exec -T veyra-postgres psql -U veyra -d veyra -tAc "SELECT 1 FROM pg_database WHERE datname = 'dograh'" | tr -d '[:space:]')" != "1" ]; then
+  docker compose exec -T veyra-postgres psql -U veyra -d veyra -v ON_ERROR_STOP=1 -c "CREATE DATABASE dograh OWNER dograh_app"
+fi
+docker compose exec -T veyra-postgres psql -U veyra -d dograh -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS vector"
+docker compose exec -T veyra-postgres psql -U veyra -d dograh -v ON_ERROR_STOP=1 -c "GRANT ALL ON SCHEMA public TO dograh_app"
+
 echo "Starting Dograh. API http://127.0.0.1:8000  UI http://127.0.0.1:3010"
-REGISTRY="${REGISTRY:-ghcr.io/dograh-hq}" ENABLE_TELEMETRY="${ENABLE_TELEMETRY:-true}" \
-  docker compose --profile tunnel up -d --pull always
+REGISTRY="${REGISTRY:-ghcr.io/dograh-hq}" docker compose --profile tunnel up -d
 
 if [ -z "${DOGRAH_API_KEY:-}" ]; then
   echo "DOGRAH_API_KEY is empty in the repo root .env. Create an org key in the Dograh UI, then put it in .env and backend/.env."
 fi
+echo "Dograh webhook URL: http://host.docker.internal:8787/api/billing/hooks/dograh"
 echo "Restart bash deploy/run.sh so the API reloads DOGRAH_BASE_URL."

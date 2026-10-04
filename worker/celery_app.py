@@ -9,4 +9,15 @@ celery_app = Celery(
     backend=settings.redis_url,
     include=["worker.tasks"],
 )
-celery_app.conf.update(task_serializer="json", accept_content=["json"], result_serializer="json", timezone="UTC")
+celery_app.conf.update(
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
+    timezone="UTC",
+    beat_schedule={
+        "sync-provider-billing": {
+            "task": "worker.tasks.sync_provider_billing",
+            "schedule": 3600.0,
+        }
+    },
+)
