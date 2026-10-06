@@ -17,3 +17,4 @@ env/
 */venv/
 */env/
 __pycache__/
+tests/

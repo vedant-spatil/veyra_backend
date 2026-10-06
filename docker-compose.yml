@@ -62,6 +62,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: voice-audio
+      MINIO_PUBLIC_ENDPOINT: http://127.0.0.1:9000
       MINIO_SECURE: "false"
       FORWARDED_ALLOW_IPS: "*"
     extra_hosts:

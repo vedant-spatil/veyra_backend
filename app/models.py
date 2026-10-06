@@ -46,6 +46,17 @@ class Session(Base):
     exp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class PendingSignup(Base):
+    __tablename__ = "pending_signups"
+
+    email: Mapped[str] = mapped_column(String(180), primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    pass_hash: Mapped[str] = mapped_column(String(256))
+    code_hash: Mapped[str] = mapped_column(String(64))
+    exp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class AllowedEmail(Base):
     __tablename__ = "allowed_emails"
 

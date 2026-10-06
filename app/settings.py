@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     payu_key: str = ""
     payu_salt: str = ""
     calcom_api_key: str = ""
+    mailjet_api_key: str = ""
+    mailjet_secret_key: str = ""
+    mailjet_from_email: str = ""
     cookie_secure: bool = False
 
     @property

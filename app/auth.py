@@ -15,6 +15,16 @@ from app.settings import get_settings
 ROLE_LEVEL = {"customer": 1, "member": 1, "owner": 2, "admin": 3, "super_admin": 4}
 SESSION_DAYS = 7
 JWT_MINUTES = 20
+SIGNUP_DOMAINS = frozenset({"gmail.com", "outlook.com", "hotmail.com"})
+SIGNUP_CREDITS = 10
+
+
+def signup_email_ok(email: str) -> bool:
+    normalized = email.strip().lower()
+    if normalized.count("@") != 1 or not normalized.endswith(".com"):
+        return False
+    local, domain = normalized.split("@", 1)
+    return bool(local) and domain in SIGNUP_DOMAINS
 
 
 def serializer() -> URLSafeTimedSerializer:
