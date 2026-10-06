@@ -79,6 +79,35 @@ copy_if_set() {
   fi
 }
 
+port_open() {
+  local port=$1
+  ss -ltn | grep -E -q "[.:]${port}([^0-9]|\$)"
+}
+
+compose_publishes() {
+  local port=$1
+  docker compose ps --status running --format '{{.Publishers}}' 2>/dev/null | grep -E -q "[.:]${port}->"
+}
+
+stop_host_unit() {
+  local port=$1 unit=$2
+  if ! port_open "$port"; then
+    return 0
+  fi
+  if compose_publishes "$port"; then
+    return 0
+  fi
+  echo "Stopping host ${unit}; it is listening on port ${port}."
+  if systemctl stop "$unit" >/dev/null 2>&1; then
+    return 0
+  fi
+  if sudo -n systemctl stop "$unit" >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "Port ${port} is still in use. Stop ${unit} and run this script again."
+  exit 1
+}
+
 touch "$ENV_FILE"
 ensure_secret OSS_JWT_SECRET
 if [ -z "$(dotenv_value "$ENV_FILE" MINIO_ROOT_USER || true)" ]; then
@@ -112,6 +141,8 @@ fi
 
 echo "Stopping the extra local-dograh Postgres and Redis."
 docker rm -f local-dograh-postgres-1 local-dograh-redis-1 local-dograh-api-1 local-dograh-ui-1 dograh-minio dograh-cloudflared >/dev/null 2>&1 || true
+echo "Removing orphan containers from the previous Compose file."
+docker rm -f backend-api-1 backend-seed-1 backend-postgres-1 >/dev/null 2>&1 || true
 
 cd "$ROOT"
 # shellcheck disable=SC1091
@@ -119,8 +150,17 @@ set -a
 . "$ENV_FILE"
 set +a
 
+if docker compose exec -T veyra-postgres pg_isready -U veyra -d veyra >/dev/null 2>&1; then
+  echo "Shared Postgres is already healthy. Keeping it."
+else
+  stop_host_unit 5432 postgresql
+fi
+if ! docker compose exec -T veyra-redis redis-cli ping >/dev/null 2>&1; then
+  stop_host_unit 6379 redis-server
+fi
+
 echo "Starting the shared Postgres and Redis."
-REGISTRY="${REGISTRY:-ghcr.io/dograh-hq}" docker compose up -d veyra-postgres veyra-redis
+REGISTRY="${REGISTRY:-ghcr.io/dograh-hq}" docker compose up -d --no-recreate --remove-orphans veyra-postgres veyra-redis
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
   if docker compose exec -T veyra-postgres pg_isready -U veyra -d veyra >/dev/null 2>&1; then
     break
@@ -136,6 +176,28 @@ docker compose exec -T veyra-postgres psql -U veyra -d dograh -v ON_ERROR_STOP=1
 
 echo "Starting Dograh. API http://127.0.0.1:8000  UI http://127.0.0.1:3010"
 REGISTRY="${REGISTRY:-ghcr.io/dograh-hq}" docker compose --profile tunnel up -d
+
+tunnel_url=""
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  tunnel_url="$(docker logs dograh-cloudflared 2>&1 | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1 || true)"
+  if [ -n "$tunnel_url" ]; then
+    break
+  fi
+  sleep 1
+done
+if [ -z "$tunnel_url" ]; then
+  echo "Cloudflare tunnel URL was not found. Dograh answer_url was left unchanged."
+else
+  current_endpoint="$(dotenv_value "$ENV_FILE" BACKEND_API_ENDPOINT || true)"
+  if [ "$current_endpoint" = "$tunnel_url" ]; then
+    echo "Dograh public URL is already $tunnel_url"
+  else
+    echo "Updating Dograh public URL to $tunnel_url"
+    set_dotenv_value "$ENV_FILE" PUBLIC_BASE_URL "$tunnel_url"
+    set_dotenv_value "$ENV_FILE" BACKEND_API_ENDPOINT "$tunnel_url"
+    REGISTRY="${REGISTRY:-ghcr.io/dograh-hq}" docker compose up -d --force-recreate --no-deps dograh-api
+  fi
+fi
 
 if [ -z "${DOGRAH_API_KEY:-}" ]; then
   echo "DOGRAH_API_KEY is empty in the repo root .env. Create an org key in the Dograh UI, then put it in .env and backend/.env."
